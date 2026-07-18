@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Image,
@@ -6,6 +6,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -70,6 +71,7 @@ function AppContent() {
   const [form, setForm] = useState({ title: '', description: '', stake: '0.05', duration: '7', max: '12' });
   const [busy, setBusy] = useState(false);
   const [liveChallenges, setLiveChallenges] = useState<Challenge[]>([]);
+  const handledSharedPact = useRef(false);
   const { width } = useWindowDimensions();
   const desktop = width >= 760;
 
@@ -79,6 +81,11 @@ function AppContent() {
     try {
       const next = await loadChallenges();
       setLiveChallenges(next);
+      if (!handledSharedPact.current && Platform.OS === 'web' && typeof window !== 'undefined') {
+        const sharedId = new URLSearchParams(window.location.search).get('pact');
+        const sharedPact = next.find(item => item.id === sharedId);
+        if (sharedPact) { handledSharedPact.current = true; setSelected(sharedPact); setScreen('detail'); }
+      }
       if (next.length && selected.id !== '1') setSelected(current => next.find(item => item.id === current.id) ?? current);
     } catch (error) { console.warn('Could not refresh contract state', error); }
   };
@@ -211,6 +218,15 @@ function Detail({ challenge, wallet, busy, setBusy, refresh, onBack, onProof }: 
   useEffect(() => { reloadMembers().catch(console.warn); }, [challenge.id, wallet?.address]);
   const mine = members.find(item => item.address.toLowerCase() === wallet?.address.toLowerCase());
   const isCreator = wallet?.address.toLowerCase() === challenge.creator.toLowerCase();
+  const sharePact = async () => {
+    const url = Platform.OS === 'web' && typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?pact=${challenge.id}` : `https://nocap-nine.vercel.app/?pact=${challenge.id}`;
+    const message = `Join my NoCap pact: ${challenge.title}\n${url}`;
+    try {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.share) await navigator.share({ title: challenge.title, text: message, url });
+      else if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) { await navigator.clipboard.writeText(url); Alert.alert('Pact link copied', 'Share it with the people you want in your squad.'); }
+      else await Share.share({ title: challenge.title, message, url });
+    } catch (error) { if ((error as Error).name !== 'AbortError') Alert.alert('Could not share', 'Copy the pact URL from your browser and try again.'); }
+  };
   const transact = async (label: string, action: () => Promise<unknown>) => {
     if (!wallet) return Alert.alert('Connect wallet', 'Connect the wallet you want to use for this pact.');
     setBusy(true);
@@ -220,6 +236,7 @@ function Detail({ challenge, wallet, busy, setBusy, refresh, onBack, onProof }: 
   };
   const progress = Math.max(8, challenge.currentDay / challenge.durationDays * 100);
   return <ScrollView contentContainerStyle={styles.scroll}><Back onPress={onBack} /><View style={styles.detailHero}><Text style={styles.detailEmoji}>{challenge.emoji}</Text><View style={styles.liveBadge}><View style={styles.liveDot} /><Text style={styles.liveText}>{challenge.status.toUpperCase()}</Text></View><Text style={styles.detailTitle}>{challenge.title}</Text><Text style={styles.detailDesc}>{challenge.description}</Text></View>
+    {isCreator && <Pressable style={styles.sharePactButton} onPress={sharePact}><Ionicons name="share-social-outline" size={17} color={colors.acid} /><View style={styles.sharePactCopy}><Text style={styles.sharePactTitle}>Share this pact</Text><Text style={styles.sharePactText}>Invite your squad with a direct link.</Text></View><Ionicons name="copy-outline" size={16} color={colors.muted} /></Pressable>}
     <View style={styles.progressHeader}><Text style={styles.progressLabel}>YOUR RUN</Text><Text style={styles.progressDay}>Day {challenge.currentDay}/{challenge.durationDays}</Text></View><View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${progress}%` }]} /></View>
     <View style={styles.commitment}><Text style={styles.commitmentLabel}>YOUR COMMITMENT</Text><Text style={styles.commitmentValue}>{challenge.stake} <Text style={styles.commitmentUnit}>MON</Text></Text><Text style={styles.commitmentNote}>Locked by the pact · returned when you finish</Text></View>
     <Text style={styles.sectionTitle}>The squad</Text>
@@ -268,4 +285,5 @@ const styles = StyleSheet.create({
   dashboardIntro:{marginTop:22,paddingTop:10},dashboardTitle:{fontFamily:font.bold,fontSize:46,lineHeight:48,color:colors.cream,letterSpacing:-2.4,maxWidth:500},dashboardCopy:{fontFamily:font.regular,fontSize:15,lineHeight:22,color:colors.muted,maxWidth:470,marginTop:14},createPactButton:{height:58,borderRadius:radius.md,backgroundColor:colors.acid,marginTop:24,paddingHorizontal:8,flexDirection:'row',alignItems:'center'},createPactIcon:{width:42,height:42,borderRadius:12,backgroundColor:colors.ink,alignItems:'center',justifyContent:'center'},createPactText:{fontFamily:font.bold,fontSize:15,color:colors.ink,marginLeft:13},manifestoCard:{marginTop:32,borderWidth:1,borderColor:colors.line,borderRadius:radius.lg,backgroundColor:colors.panel,padding:20},manifestoTop:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingBottom:18,borderBottomWidth:1,borderColor:colors.line},manifestoLabel:{fontFamily:font.bold,fontSize:10,color:colors.acid,letterSpacing:1.6},manifestoNumber:{fontFamily:font.medium,fontSize:10,color:colors.muted},manifestoRow:{flexDirection:'row',gap:14,paddingVertical:17,borderBottomWidth:1,borderColor:colors.line},manifestoStep:{width:38,height:38,borderRadius:12,borderWidth:1,borderColor:'#3B4625',backgroundColor:'#252C1C',alignItems:'center',justifyContent:'center'},manifestoCopy:{flex:1,paddingTop:2},manifestoTitle:{fontFamily:font.bold,fontSize:14,color:colors.cream},manifestoText:{fontFamily:font.regular,fontSize:12,lineHeight:18,color:colors.muted,marginTop:4},manifestoAction:{alignSelf:'flex-start',height:34,borderRadius:radius.pill,borderWidth:1,borderColor:colors.line,flexDirection:'row',alignItems:'center',gap:7,paddingHorizontal:12,marginTop:12},manifestoActionText:{fontFamily:font.bold,fontSize:10,color:colors.cream},manifestoFoot:{fontFamily:font.medium,fontSize:10,lineHeight:15,color:colors.muted,marginTop:17},emptyPacts:{borderWidth:1,borderColor:colors.line,borderRadius:radius.lg,backgroundColor:colors.panel,padding:24,alignItems:'flex-start'},emptyStamp:{borderWidth:1,borderColor:colors.acid,borderRadius:radius.pill,paddingHorizontal:10,paddingVertical:5},emptyStampText:{fontFamily:font.bold,fontSize:9,color:colors.acid,letterSpacing:1.1},emptyTitle:{fontFamily:font.bold,fontSize:24,color:colors.cream,letterSpacing:-.8,marginTop:20},emptyText:{fontFamily:font.regular,fontSize:13,lineHeight:20,color:colors.muted,marginTop:7,maxWidth:400},outlineButton:{height:44,borderRadius:radius.md,borderWidth:1,borderColor:colors.line,paddingHorizontal:15,alignItems:'center',justifyContent:'center',marginTop:20},outlineButtonText:{fontFamily:font.bold,fontSize:12,color:colors.cream},sectionMeta:{fontFamily:font.bold,fontSize:9,color:colors.green,letterSpacing:1.1},livePact:{borderWidth:1,borderColor:colors.line,borderRadius:radius.lg,backgroundColor:colors.panel,padding:19},livePactHead:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},liveIndicator:{flexDirection:'row',alignItems:'center',gap:7},liveIndicatorText:{fontFamily:font.bold,fontSize:9,color:colors.green,letterSpacing:1.2},liveId:{fontFamily:font.medium,fontSize:10,color:colors.muted},livePactTitle:{fontFamily:font.bold,fontSize:25,color:colors.cream,letterSpacing:-.8,marginTop:24},livePactRule:{fontFamily:font.regular,fontSize:13,lineHeight:19,color:colors.muted,marginTop:6},livePactMeta:{flexDirection:'row',justifyContent:'space-between',marginTop:23,paddingTop:17,borderTopWidth:1,borderColor:colors.line},metaLabel:{fontFamily:font.bold,fontSize:8,color:colors.muted,letterSpacing:1},metaValue:{fontFamily:font.bold,fontSize:13,color:colors.cream,marginTop:4},balanceBar:{marginTop:22,borderTopWidth:1,borderBottomWidth:1,borderColor:colors.line,paddingVertical:16,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},balanceLabel:{fontFamily:font.bold,fontSize:9,color:colors.muted,letterSpacing:1.1},balanceValue:{fontFamily:font.bold,fontSize:18,color:colors.cream,marginTop:4},balanceUnit:{fontSize:10,color:colors.acid},networkPill:{borderRadius:radius.pill,backgroundColor:colors.raised,paddingHorizontal:10,paddingVertical:7},networkText:{fontFamily:font.bold,fontSize:9,color:colors.green},formIntro:{fontFamily:font.regular,fontSize:14,lineHeight:21,color:colors.muted,marginTop:-16,marginBottom:8,maxWidth:470},demoHelper:{fontFamily:font.regular,fontSize:10,lineHeight:15,color:colors.muted,marginTop:8},
   previewNote:{fontFamily:font.medium,fontSize:11,color:colors.orange,textAlign:'center',marginTop:10},memberRow:{minHeight:62,borderBottomWidth:1,borderColor:colors.line,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},memberAddress:{fontFamily:font.semibold,fontSize:12,color:colors.cream},memberProof:{fontFamily:font.regular,fontSize:10,color:colors.muted,marginTop:3},approveButton:{paddingHorizontal:12,paddingVertical:8,borderRadius:radius.pill,backgroundColor:colors.acid},approveText:{fontFamily:font.bold,fontSize:10,color:colors.ink},secondaryAction:{height:52,borderRadius:radius.md,borderWidth:1,borderColor:colors.acid,marginTop:12,alignItems:'center',justifyContent:'center'},secondaryActionText:{fontFamily:font.bold,fontSize:14,color:colors.acid},
   faucetLink:{marginTop:15,padding:14,borderRadius:radius.md,borderWidth:1,borderColor:colors.line,backgroundColor:colors.panel,flexDirection:'row',alignItems:'center',gap:10},faucetTitle:{fontFamily:font.semibold,fontSize:12,color:colors.cream},faucetSub:{fontFamily:font.regular,fontSize:9,color:colors.muted,marginTop:2,maxWidth:330},
+  sharePactButton:{minHeight:62,borderRadius:radius.md,borderWidth:1,borderColor:colors.line,backgroundColor:colors.panel,paddingHorizontal:15,flexDirection:'row',alignItems:'center',gap:11,marginBottom:24},sharePactCopy:{flex:1},sharePactTitle:{fontFamily:font.bold,fontSize:12,color:colors.cream},sharePactText:{fontFamily:font.regular,fontSize:10,color:colors.muted,marginTop:2},
 });
