@@ -13,4 +13,5 @@ export type Challenge = {
   status: ChallengeStatus;
   creator: string;
   category: string;
+  endsAt?: number;
 };

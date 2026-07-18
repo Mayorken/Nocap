@@ -18,7 +18,15 @@ Goals announced in group chats usually disappear after a few days. The promise i
 - Photo-proof selection using Expo ImagePicker
 - Solidity escrow with proof review, settlement, and pull-based claims
 
-Proof storage and the remaining contract writes are the next integration milestone; the UI labels unfinished behavior rather than presenting a fake transaction.
+The web app reads live challenges from the contract and supports the complete transaction loop: create, join, submit proof, approve proof, settle, and claim.
+
+## Submission links
+
+- App: https://mayorken.github.io/Nocap/
+- Source: https://github.com/Mayorken/Nocap
+- Contract: add after Monad Testnet deployment
+- Demo video: add after recording
+- Social post: add after publishing
 
 ## Run locally
 
@@ -41,6 +49,15 @@ EXPO_PUBLIC_CONTRACT_ADDRESS=0x...
 The contract is at `contracts/NoCapChallenge.sol`. Compile and deploy it with Foundry, Hardhat, or Remix using Solidity 0.8.24. The target network is Monad Testnet (chain ID `10143`).
 
 The MVP deliberately uses creator-reviewed proofs. A production release should replace this with an explicit squad quorum or independent verifier to remove creator discretion.
+
+### Fast deployment with Remix
+
+1. Open https://remix.ethereum.org and create `NoCapChallenge.sol`.
+2. Paste the contents of `contracts/NoCapChallenge.sol` and compile with Solidity 0.8.24.
+3. In **Deploy & Run**, select **Injected Provider - MetaMask**.
+4. Confirm MetaMask is on Monad Testnet (chain ID `10143`).
+5. Deploy `NoCapChallenge` and copy the resulting address.
+6. Set `EXPO_PUBLIC_CONTRACT_ADDRESS` in `.env`, rebuild, and redeploy the site.
 
 ## Privacy
 

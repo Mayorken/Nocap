@@ -6,7 +6,9 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "scheme": "nocap",
-    "web": { "bundler": "metro", "output": "single" },
+    "githubUrl": "https://github.com/Mayorken/Nocap",
+    "experiments": { "baseUrl": "/Nocap" },
+    "web": { "bundler": "metro", "output": "single", "name": "NoCap", "shortName": "NoCap", "description": "Lock in. Show proof. Stay consistent." },
     "plugins": [
       [
         "expo-image-picker",

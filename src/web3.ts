@@ -1,5 +1,6 @@
-import { BrowserProvider, Contract, formatEther, parseEther } from 'ethers';
+import { BrowserProvider, Contract, JsonRpcProvider, formatEther, parseEther } from 'ethers';
 import { Platform } from 'react-native';
+import type { Challenge } from './types';
 
 export const MONAD_TESTNET = {
   chainId: '0x279f',
@@ -10,31 +11,44 @@ export const MONAD_TESTNET = {
 };
 
 export const CONTRACT_ADDRESS = process.env.EXPO_PUBLIC_CONTRACT_ADDRESS ?? '';
+export const EXPLORER_URL = MONAD_TESTNET.blockExplorerUrls[0];
 
 export const ABI = [
   'function createChallenge(string title,uint64 startsAt,uint64 endsAt,uint16 maxParticipants) payable returns (uint256)',
   'function joinChallenge(uint256 challengeId) payable',
-  'function submitProof(uint256 challengeId,string proofUri)',
+  'function submitProof(uint256 challengeId,string uri)',
   'function verifyProof(uint256 challengeId,address participant,bool approved)',
   'function settleChallenge(uint256 challengeId)',
+  'function claim(uint256 challengeId)',
   'function challengeCount() view returns (uint256)',
-  'function getChallenge(uint256 challengeId) view returns (address creator,string title,uint96 stake,uint64 startsAt,uint64 endsAt,uint16 maxParticipants,uint16 participantCount,uint8 status)',
+  'function getChallenge(uint256 challengeId) view returns ((address creator,string title,uint96 stake,uint64 startsAt,uint64 endsAt,uint16 maxParticipants,uint16 participantCount,uint16 approvedCount,uint8 status))',
+  'function getParticipants(uint256 challengeId) view returns (address[])',
+  'function hasJoined(uint256 challengeId,address participant) view returns (bool)',
+  'function proofUri(uint256 challengeId,address participant) view returns (string)',
+  'function proofApproved(uint256 challengeId,address participant) view returns (bool)',
+  'function claimable(uint256 challengeId,address participant) view returns (uint256)',
   'event ChallengeCreated(uint256 indexed challengeId,address indexed creator,string title,uint256 stake)',
 ];
 
-type EthereumProvider = {
-  request(args: { method: string; params?: unknown[] | object }): Promise<unknown>;
-};
-
-declare global {
-  interface Window { ethereum?: EthereumProvider }
-}
+type EthereumProvider = { request(args: { method: string; params?: unknown[] | object }): Promise<unknown> };
+declare global { interface Window { ethereum?: EthereumProvider } }
 
 function injected(): EthereumProvider {
   if (Platform.OS !== 'web' || typeof window === 'undefined' || !window.ethereum) {
-    throw new Error('Open NoCap on web with MetaMask or another EVM wallet installed.');
+    throw new Error('Open NoCap in a browser with MetaMask or another EVM wallet.');
   }
   return window.ethereum;
+}
+
+async function signerContract() {
+  if (!CONTRACT_ADDRESS) throw new Error('NoCap contract address is not configured.');
+  const provider = new BrowserProvider(injected());
+  return new Contract(CONTRACT_ADDRESS, ABI, await provider.getSigner());
+}
+
+function readonlyContract() {
+  if (!CONTRACT_ADDRESS) throw new Error('NoCap contract address is not configured.');
+  return new Contract(CONTRACT_ADDRESS, ABI, new JsonRpcProvider(MONAD_TESTNET.rpcUrls[0]));
 }
 
 export async function connectWallet() {
@@ -43,32 +57,60 @@ export async function connectWallet() {
   try {
     await ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: MONAD_TESTNET.chainId }] });
   } catch (error) {
-    const code = (error as { code?: number }).code;
-    if (code !== 4902) throw error;
+    if ((error as { code?: number }).code !== 4902) throw error;
     await ethereum.request({ method: 'wallet_addEthereumChain', params: [MONAD_TESTNET] });
   }
   const provider = new BrowserProvider(ethereum);
   const signer = await provider.getSigner();
   const address = await signer.getAddress();
-  const balance = formatEther(await provider.getBalance(address));
-  return { address, balance: Number(balance).toFixed(2) };
+  return { address, balance: Number(formatEther(await provider.getBalance(address))).toFixed(2) };
 }
 
-export async function createOnchainChallenge(input: {
-  title: string;
-  stake: string;
-  durationDays: number;
-  maxParticipants: number;
-}) {
-  if (!CONTRACT_ADDRESS) throw new Error('Contract address is not configured yet.');
-  const provider = new BrowserProvider(injected());
-  const contract = new Contract(CONTRACT_ADDRESS, ABI, await provider.getSigner());
-  // Leave enough room for wallet confirmation and block inclusion.
-  const startsAt = Math.floor(Date.now() / 1000) + 60;
-  const endsAt = startsAt + input.durationDays * 86_400;
-  const createChallenge = contract.getFunction('createChallenge');
-  const tx = await createChallenge(input.title, startsAt, endsAt, input.maxParticipants, {
-    value: parseEther(input.stake),
-  });
+export async function loadChallenges(): Promise<Challenge[]> {
+  if (!CONTRACT_ADDRESS) return [];
+  const contract = readonlyContract();
+  const count = Number(await contract.getFunction('challengeCount')());
+  const ids = Array.from({ length: Math.min(count, 30) }, (_, index) => count - index);
+  return Promise.all(ids.map(async id => {
+    const raw = await contract.getFunction('getChallenge')(id);
+    const startsAt = Number(raw.startsAt);
+    const endsAt = Number(raw.endsAt);
+    const durationDays = Math.max(1, Math.ceil((endsAt - startsAt) / 86_400));
+    const elapsed = Math.max(0, Math.floor((Date.now() / 1000 - startsAt) / 86_400) + 1);
+    return {
+      id: String(id), title: raw.title, description: 'A real pact secured on Monad.', emoji: '⚡',
+      stake: Number(formatEther(raw.stake)).toFixed(3).replace(/0+$/, '').replace(/\.$/, ''),
+      durationDays, participantCount: Number(raw.participantCount), maxParticipants: Number(raw.maxParticipants),
+      currentDay: Math.min(durationDays, elapsed), status: Number(raw.status) === 0 ? (Date.now() / 1000 < endsAt ? 'active' : 'verifying') : 'settled',
+      creator: raw.creator, category: 'Live', endsAt,
+    } as Challenge;
+  }));
+}
+
+export async function loadChallengeMembers(challengeId: string) {
+  const contract = readonlyContract();
+  const addresses: string[] = await contract.getFunction('getParticipants')(challengeId);
+  return Promise.all(addresses.map(async address => ({
+    address,
+    proof: await contract.getFunction('proofUri')(challengeId, address) as string,
+    approved: await contract.getFunction('proofApproved')(challengeId, address) as boolean,
+    claimable: formatEther(await contract.getFunction('claimable')(challengeId, address)),
+  })));
+}
+
+async function send(method: string, args: unknown[] = [], value?: string) {
+  const contract = await signerContract();
+  const tx = await contract.getFunction(method)(...args, ...(value ? [{ value: parseEther(value) }] : []));
   return tx.wait();
 }
+
+export async function createOnchainChallenge(input: { title: string; stake: string; durationDays: number; maxParticipants: number; demo?: boolean }) {
+  const startsAt = Math.floor(Date.now() / 1000) + 30;
+  const endsAt = startsAt + (input.demo ? 180 : input.durationDays * 86_400);
+  return send('createChallenge', [input.title, startsAt, endsAt, input.maxParticipants], input.stake);
+}
+export const joinOnchainChallenge = (id: string, stake: string) => send('joinChallenge', [id], stake);
+export const submitOnchainProof = (id: string, proof: string) => send('submitProof', [id, proof]);
+export const verifyOnchainProof = (id: string, participant: string, approved: boolean) => send('verifyProof', [id, participant, approved]);
+export const settleOnchainChallenge = (id: string) => send('settleChallenge', [id]);
+export const claimOnchainPayout = (id: string) => send('claim', [id]);
