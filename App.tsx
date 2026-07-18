@@ -32,6 +32,7 @@ import {
   claimOnchainPayout,
   connectWallet,
   createOnchainChallenge,
+  disconnectWallet,
   joinOnchainChallenge,
   loadChallengeMembers,
   loadChallenges,
@@ -93,6 +94,14 @@ function AppContent() {
     finally { setBusy(false); }
   };
 
+  const handleWalletPress = async () => {
+    if (!wallet) return handleConnect();
+    disconnectWallet();
+    setWallet(null);
+    setScreen('home');
+    await refresh();
+  };
+
   const handleCreate = async () => {
     if (!form.title.trim()) return Alert.alert('Name your challenge', 'Give the squad something to rally around.');
     setBusy(true);
@@ -118,9 +127,10 @@ function AppContent() {
       <View style={[styles.shell, desktop && styles.desktopShell]}>
         <View style={styles.header}>
           <Pressable onPress={() => go('home')}><Logo /></Pressable>
-          <Pressable style={[styles.wallet, wallet && styles.walletConnected]} onPress={handleConnect} disabled={busy}>
+          <Pressable style={[styles.wallet, wallet && styles.walletConnected]} onPress={handleWalletPress} disabled={busy} accessibilityLabel={wallet ? 'Disconnect wallet' : 'Connect wallet'}>
             <View style={[styles.walletDot, wallet && styles.walletDotLive]} />
             <Text style={styles.walletText}>{wallet ? shortAddress : busy ? 'Connecting…' : 'Connect wallet'}</Text>
+            {wallet && <Ionicons name="log-out-outline" size={14} color={colors.muted} />}
           </Pressable>
         </View>
 
