@@ -17,7 +17,7 @@ import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import { Ionicons } from '@expo/vector-icons';
+import { FontAwesome5, Ionicons } from '@expo/vector-icons';
 import {
   SpaceGrotesk_400Regular,
   SpaceGrotesk_500Medium,
@@ -141,7 +141,7 @@ function Home({ wallet, challenges, onCreate, onConnect, onSelect }: { wallet: {
       <Text style={styles.dashboardTitle}>{wallet ? 'Commitments worth keeping.' : 'Make the promise.\nProve the work.'}</Text>
       <Text style={styles.dashboardCopy}>{wallet ? 'Every pact below is live on Monad—not a private score someone can edit.' : 'NoCap gives your group goals a deadline, equal commitment, and a settlement everyone can verify.'}</Text>
       <Pressable style={styles.createPactButton} onPress={onCreate}>
-        <View style={styles.createPactIcon}><Ionicons name="add" size={20} color={colors.ink} /></View>
+        <View style={styles.createPactIcon}><FontAwesome5 name="handshake" size={18} color={colors.acid} /></View>
         <Text style={styles.createPactText}>Start a new pact</Text>
         <Ionicons name="arrow-forward" size={18} color={colors.ink} />
       </Pressable>
@@ -150,10 +150,10 @@ function Home({ wallet, challenges, onCreate, onConnect, onSelect }: { wallet: {
     {!wallet && <View style={styles.manifestoCard}>
       <View style={styles.manifestoTop}><Text style={styles.manifestoLabel}>HOW IT WORKS</Text><Text style={styles.manifestoNumber}>01—03</Text></View>
       {[
-        { number:'01', title:'Commit', copy:'Set the outcome, deadline, and equal commitment.', button:'Create a pact', icon:'add' as const, action:onCreate },
+        { number:'01', title:'Commit', copy:'Set the outcome, deadline, and equal commitment.', button:'Create a pact', icon:'handshake' as const, action:onCreate },
         { number:'02', title:'Show up', copy:'Connect your wallet and submit an honest receipt of the work.', button:'Connect wallet', icon:'wallet-outline' as const, action:onConnect },
         { number:'03', title:'Settle', copy:'Finishers reclaim their commitment through the verified contract.', button:'View contract', icon:'open-outline' as const, action:() => Linking.openURL(`${EXPLORER_URL}/address/${CONTRACT_ADDRESS}`) },
-      ].map(item => <View key={item.number} style={styles.manifestoRow}><Text style={styles.manifestoStep}>{item.number}</Text><View style={styles.manifestoCopy}><Text style={styles.manifestoTitle}>{item.title}</Text><Text style={styles.manifestoText}>{item.copy}</Text><Pressable style={styles.manifestoAction} onPress={item.action}><Text style={styles.manifestoActionText}>{item.button}</Text><Ionicons name={item.icon} size={14} color={colors.acid} /></Pressable></View></View>)}
+      ].map(item => <View key={item.number} style={styles.manifestoRow}><Text style={styles.manifestoStep}>{item.number}</Text><View style={styles.manifestoCopy}><Text style={styles.manifestoTitle}>{item.title}</Text><Text style={styles.manifestoText}>{item.copy}</Text><Pressable style={styles.manifestoAction} onPress={item.action}><Text style={styles.manifestoActionText}>{item.button}</Text>{item.icon === 'handshake' ? <FontAwesome5 name="handshake" size={13} color={colors.acid} /> : <Ionicons name={item.icon} size={14} color={colors.acid} />}</Pressable></View></View>)}
       <Text style={styles.manifestoFoot}>Every action is visible and verifiable on Monad Testnet.</Text>
     </View>}
 
