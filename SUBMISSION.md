@@ -32,7 +32,9 @@ Monad Testnet
 
 **Contract address**
 
-`PENDING_DEPLOYMENT`
+`0x992D51421E5A53c402c09B6d07a0eF7A78fe88B1`
+
+Explorer: https://testnet.monadvision.com/address/0x992D51421E5A53c402c09B6d07a0eF7A78fe88B1
 
 **Demo video**
 
@@ -109,7 +111,7 @@ Code: https://github.com/Mayorken/Nocap
 - [x] Public project URL
 - [x] Public GitHub repository
 - [x] Monad Testnet category selected
-- [ ] Deployed contract address configured in the app
+- [x] Deployed contract address configured in the app
 - [ ] Complete two-wallet transaction test recorded
 - [ ] Public demo video URL
 - [ ] Published social post URL

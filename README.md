@@ -24,7 +24,7 @@ The web app reads live challenges from the contract and supports the complete tr
 
 - App: https://mayorken.github.io/Nocap/
 - Source: https://github.com/Mayorken/Nocap
-- Contract: add after Monad Testnet deployment
+- Contract: [`0x992D…88B1`](https://testnet.monadvision.com/address/0x992D51421E5A53c402c09B6d07a0eF7A78fe88B1)
 - Demo video: add after recording
 - Social post: add after publishing
 
@@ -46,7 +46,7 @@ EXPO_PUBLIC_CONTRACT_ADDRESS=0x...
 
 ## Contract
 
-The contract is at `contracts/NoCapChallenge.sol`. Compile and deploy it with Foundry, Hardhat, or Remix using Solidity 0.8.24. The target network is Monad Testnet (chain ID `10143`).
+The contract is at `contracts/NoCapChallenge.sol` and is deployed on Monad Testnet (chain ID `10143`) at `0x992D51421E5A53c402c09B6d07a0eF7A78fe88B1`.
 
 The MVP deliberately uses creator-reviewed proofs. A production release should replace this with an explicit squad quorum or independent verifier to remove creator discretion.
 
