@@ -225,8 +225,9 @@ function Back({ onPress }: { onPress(): void }) { return <Pressable style={style
 function Label({ text }: { text: string }) { return <Text style={styles.label}>{text}</Text>; }
 
 export default function App() {
-  const [fontsLoaded] = useFonts({ SpaceGrotesk_400Regular, SpaceGrotesk_500Medium, SpaceGrotesk_600SemiBold, SpaceGrotesk_700Bold });
-  if (!fontsLoaded) return <View style={{ flex: 1, backgroundColor: colors.ink }} />;
+  // Never block the product on a font request. GitHub Pages, privacy extensions,
+  // and slow mobile networks can delay font assets while the app itself is ready.
+  useFonts({ SpaceGrotesk_400Regular, SpaceGrotesk_500Medium, SpaceGrotesk_600SemiBold, SpaceGrotesk_700Bold });
   return <SafeAreaProvider><AppContent /></SafeAreaProvider>;
 }
 
