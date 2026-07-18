@@ -23,7 +23,11 @@ contract NoCapChallenge {
     uint256 public challengeCount;
     mapping(uint256 => Challenge) private challenges;
     mapping(uint256 => address[]) private participants;
+    mapping(uint256 => address[]) private joinRequesters;
     mapping(uint256 => mapping(address => bool)) public hasJoined;
+    mapping(uint256 => mapping(address => bool)) public hasRequestedJoin;
+    mapping(uint256 => mapping(address => bool)) public joinApproved;
+    mapping(uint256 => mapping(address => bool)) public joinRequestReviewed;
     mapping(uint256 => mapping(address => string)) public proofUri;
     mapping(uint256 => mapping(address => bool)) public proofApproved;
     mapping(uint256 => mapping(address => bool)) public proofResolved;
@@ -36,6 +40,8 @@ contract NoCapChallenge {
 
     event ChallengeCreated(uint256 indexed challengeId, address indexed creator, string title, uint256 stake, ReviewPolicy reviewPolicy);
     event ChallengeJoined(uint256 indexed challengeId, address indexed participant);
+    event JoinRequested(uint256 indexed challengeId, address indexed requester);
+    event JoinRequestReviewed(uint256 indexed challengeId, address indexed requester, bool approved);
     event ProofSubmitted(uint256 indexed challengeId, address indexed participant, string proofUri);
     event ProofVerified(uint256 indexed challengeId, address indexed participant, bool approved);
     event ProofReviewed(uint256 indexed challengeId, address indexed participant, address indexed reviewer, bool approved);
@@ -45,6 +51,8 @@ contract NoCapChallenge {
     error ChallengeNotOpen();
     error ChallengeFull();
     error AlreadyJoined();
+    error RequestAlreadyExists();
+    error JoinNotApproved();
     error IncorrectStake();
     error InvalidSchedule();
     error InvalidCapacity();
@@ -94,12 +102,37 @@ contract NoCapChallenge {
         if (challenge.status != Status.Open || block.timestamp >= challenge.endsAt) revert ChallengeNotOpen();
         if (challenge.participantCount >= challenge.maxParticipants) revert ChallengeFull();
         if (hasJoined[challengeId][msg.sender]) revert AlreadyJoined();
+        if (!joinApproved[challengeId][msg.sender]) revert JoinNotApproved();
         if (msg.value != challenge.stake) revert IncorrectStake();
 
         hasJoined[challengeId][msg.sender] = true;
         challenge.participantCount++;
         participants[challengeId].push(msg.sender);
         emit ChallengeJoined(challengeId, msg.sender);
+    }
+
+    function requestToJoin(uint256 challengeId) external {
+        Challenge storage challenge = challenges[challengeId];
+        if (challenge.status != Status.Open || block.timestamp >= challenge.endsAt) revert ChallengeNotOpen();
+        if (hasJoined[challengeId][msg.sender]) revert AlreadyJoined();
+        if (hasRequestedJoin[challengeId][msg.sender]) revert RequestAlreadyExists();
+        if (challenge.participantCount >= challenge.maxParticipants) revert ChallengeFull();
+
+        hasRequestedJoin[challengeId][msg.sender] = true;
+        joinRequesters[challengeId].push(msg.sender);
+        emit JoinRequested(challengeId, msg.sender);
+    }
+
+    function reviewJoinRequest(uint256 challengeId, address requester, bool approved) external {
+        Challenge storage challenge = challenges[challengeId];
+        if (msg.sender != challenge.creator) revert NotCreator();
+        if (challenge.status != Status.Open || block.timestamp >= challenge.endsAt) revert ChallengeNotOpen();
+        if (!hasRequestedJoin[challengeId][requester]) revert NotParticipant();
+        if (approved && challenge.participantCount >= challenge.maxParticipants) revert ChallengeFull();
+
+        joinApproved[challengeId][requester] = approved;
+        joinRequestReviewed[challengeId][requester] = true;
+        emit JoinRequestReviewed(challengeId, requester, approved);
     }
 
     function submitProof(uint256 challengeId, string calldata uri) external {
@@ -209,5 +242,9 @@ contract NoCapChallenge {
 
     function getParticipants(uint256 challengeId) external view returns (address[] memory) {
         return participants[challengeId];
+    }
+
+    function getJoinRequesters(uint256 challengeId) external view returns (address[] memory) {
+        return joinRequesters[challengeId];
     }
 }

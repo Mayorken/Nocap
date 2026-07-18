@@ -16,6 +16,8 @@ export const EXPLORER_URL = MONAD_TESTNET.blockExplorerUrls[0];
 export const ABI = [
   'function createChallenge(string title,uint64 startsAt,uint64 endsAt,uint16 maxParticipants,uint8 reviewPolicy) payable returns (uint256)',
   'function joinChallenge(uint256 challengeId) payable',
+  'function requestToJoin(uint256 challengeId)',
+  'function reviewJoinRequest(uint256 challengeId,address requester,bool approved)',
   'function submitProof(uint256 challengeId,string uri)',
   'function verifyProof(uint256 challengeId,address participant,bool approved)',
   'function settleChallenge(uint256 challengeId)',
@@ -23,6 +25,10 @@ export const ABI = [
   'function challengeCount() view returns (uint256)',
   'function getChallenge(uint256 challengeId) view returns ((address creator,string title,uint96 stake,uint64 startsAt,uint64 endsAt,uint16 maxParticipants,uint16 participantCount,uint16 approvedCount,uint8 reviewPolicy,uint8 status))',
   'function getParticipants(uint256 challengeId) view returns (address[])',
+  'function getJoinRequesters(uint256 challengeId) view returns (address[])',
+  'function hasRequestedJoin(uint256 challengeId,address requester) view returns (bool)',
+  'function joinApproved(uint256 challengeId,address requester) view returns (bool)',
+  'function joinRequestReviewed(uint256 challengeId,address requester) view returns (bool)',
   'function hasJoined(uint256 challengeId,address participant) view returns (bool)',
   'function proofUri(uint256 challengeId,address participant) view returns (string)',
   'function proofApproved(uint256 challengeId,address participant) view returns (bool)',
@@ -115,6 +121,16 @@ export async function loadChallengeMembers(challengeId: string) {
   })));
 }
 
+export async function loadJoinRequests(challengeId: string) {
+  const contract = readonlyContract();
+  const addresses: string[] = await contract.getFunction('getJoinRequesters')(challengeId);
+  return Promise.all(addresses.map(async address => ({
+    address,
+    approved: await contract.getFunction('joinApproved')(challengeId, address) as boolean,
+    reviewed: await contract.getFunction('joinRequestReviewed')(challengeId, address) as boolean,
+  })));
+}
+
 async function send(method: string, args: unknown[] = [], value?: string) {
   const contract = await signerContract();
   const tx = await contract.getFunction(method)(...args, ...(value ? [{ value: parseEther(value) }] : []));
@@ -128,6 +144,8 @@ export async function createOnchainChallenge(input: { title: string; stake: stri
   return send('createChallenge', [input.title, startsAt, endsAt, input.maxParticipants, policy], input.stake);
 }
 export const joinOnchainChallenge = (id: string, stake: string) => send('joinChallenge', [id], stake);
+export const requestOnchainJoin = (id: string) => send('requestToJoin', [id]);
+export const reviewOnchainJoin = (id: string, requester: string, approved: boolean) => send('reviewJoinRequest', [id, requester, approved]);
 export const submitOnchainProof = (id: string, proof: string) => send('submitProof', [id, proof]);
 export const verifyOnchainProof = (id: string, participant: string, approved: boolean) => send('verifyProof', [id, participant, approved]);
 export const settleOnchainChallenge = (id: string) => send('settleChallenge', [id]);

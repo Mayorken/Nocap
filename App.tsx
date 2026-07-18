@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Image,
@@ -6,6 +6,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -36,6 +37,9 @@ import {
   joinOnchainChallenge,
   loadChallengeMembers,
   loadChallenges,
+  loadJoinRequests,
+  requestOnchainJoin,
+  reviewOnchainJoin,
   settleOnchainChallenge,
   submitOnchainProof,
   verifyOnchainProof,
@@ -70,6 +74,7 @@ function AppContent() {
   const [form, setForm] = useState({ title: '', description: '', stake: '0.05', duration: '7', max: '12', reviewPolicy: 'majority' });
   const [busy, setBusy] = useState(false);
   const [liveChallenges, setLiveChallenges] = useState<Challenge[]>([]);
+  const handledSharedPact = useRef(false);
   const { width } = useWindowDimensions();
   const desktop = width >= 760;
 
@@ -79,6 +84,11 @@ function AppContent() {
     try {
       const next = await loadChallenges();
       setLiveChallenges(next);
+      if (!handledSharedPact.current && Platform.OS === 'web' && typeof window !== 'undefined') {
+        const sharedId = new URLSearchParams(window.location.search).get('pact');
+        const sharedPact = next.find(item => item.id === sharedId);
+        if (sharedPact) { handledSharedPact.current = true; setSelected(sharedPact); setScreen('detail'); }
+      }
       if (next.length && selected.id !== '1') setSelected(current => next.find(item => item.id === current.id) ?? current);
     } catch (error) { console.warn('Could not refresh contract state', error); }
   };
@@ -136,7 +146,7 @@ function AppContent() {
 
         {screen === 'home' && <Home wallet={wallet} challenges={liveChallenges} onCreate={() => go('create')} onConnect={handleConnect} onSelect={selectChallenge} />}
         {screen === 'create' && <Create form={form} setForm={setForm} onBack={() => go('home')} onSubmit={handleCreate} busy={busy} wallet={wallet} onConnect={handleConnect} />}
-        {screen === 'detail' && <Detail challenge={selected} wallet={wallet} busy={busy} setBusy={setBusy} refresh={refresh} onBack={() => go('home')} onProof={() => go('proof')} />}
+        {screen === 'detail' && <Detail challenge={selected} wallet={wallet} busy={busy} setBusy={setBusy} refresh={refresh} onBack={() => go('home')} onProof={() => go('proof')} onConnect={handleConnect} />}
         {screen === 'proof' && <Proof challenge={selected} proof={proof} wallet={wallet} busy={busy} setBusy={setBusy} onPick={pickProof} onBack={() => go('detail')} />}
       </View>
     </SafeAreaView>
@@ -210,12 +220,23 @@ function Create({ form, setForm, onBack, onSubmit, busy, wallet, onConnect }: { 
   </ScrollView>;
 }
 
-function Detail({ challenge, wallet, busy, setBusy, refresh, onBack, onProof }: { challenge: Challenge; wallet: { address: string; balance: string } | null; busy: boolean; setBusy(value: boolean): void; refresh(): Promise<void>; onBack(): void; onProof(): void }) {
+function Detail({ challenge, wallet, busy, setBusy, refresh, onBack, onProof, onConnect }: { challenge: Challenge; wallet: { address: string; balance: string } | null; busy: boolean; setBusy(value: boolean): void; refresh(): Promise<void>; onBack(): void; onProof(): void; onConnect(): void }) {
   const [members, setMembers] = useState<Array<{ address: string; proof: string; approved: boolean; resolved: boolean; claimable: string }>>([]);
-  const reloadMembers = async () => { if (CONTRACT_ADDRESS && !Number.isNaN(Number(challenge.id))) setMembers(await loadChallengeMembers(challenge.id)); };
+  const [joinRequests, setJoinRequests] = useState<Array<{ address: string; approved: boolean; reviewed: boolean }>>([]);
+  const reloadMembers = async () => { if (CONTRACT_ADDRESS && !Number.isNaN(Number(challenge.id))) { const [nextMembers, nextRequests] = await Promise.all([loadChallengeMembers(challenge.id), loadJoinRequests(challenge.id)]); setMembers(nextMembers); setJoinRequests(nextRequests); } };
   useEffect(() => { reloadMembers().catch(console.warn); }, [challenge.id, wallet?.address]);
   const mine = members.find(item => item.address.toLowerCase() === wallet?.address.toLowerCase());
+  const myJoinRequest = joinRequests.find(item => item.address.toLowerCase() === wallet?.address.toLowerCase());
   const isCreator = wallet?.address.toLowerCase() === challenge.creator.toLowerCase();
+  const sharePact = async () => {
+    const url = Platform.OS === 'web' && typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?pact=${challenge.id}` : `https://nocap-nine.vercel.app/?pact=${challenge.id}`;
+    const message = `Join my NoCap pact: ${challenge.title}\n${url}`;
+    try {
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.share) await navigator.share({ title: challenge.title, text: message, url });
+      else if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) { await navigator.clipboard.writeText(url); Alert.alert('Pact link copied', 'Share it with the people you want in your squad.'); }
+      else await Share.share({ title: challenge.title, message, url });
+    } catch (error) { if ((error as Error).name !== 'AbortError') Alert.alert('Could not share', 'Copy the pact URL from your browser and try again.'); }
+  };
   const transact = async (label: string, action: () => Promise<unknown>) => {
     if (!wallet) return Alert.alert('Connect wallet', 'Connect the wallet you want to use for this pact.');
     setBusy(true);
@@ -227,9 +248,15 @@ function Detail({ challenge, wallet, busy, setBusy, refresh, onBack, onProof }: 
   return <ScrollView contentContainerStyle={styles.scroll}><Back onPress={onBack} /><View style={styles.detailHero}><Text style={styles.detailEmoji}>{challenge.emoji}</Text><View style={styles.liveBadge}><View style={styles.liveDot} /><Text style={styles.liveText}>{challenge.status.toUpperCase()}</Text></View><Text style={styles.detailTitle}>{challenge.title}</Text><Text style={styles.detailDesc}>{challenge.description}</Text></View>
     <View style={styles.progressHeader}><Text style={styles.progressLabel}>YOUR RUN</Text><Text style={styles.progressDay}>Day {challenge.currentDay}/{challenge.durationDays}</Text></View><View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${progress}%` }]} /></View>
     <View style={styles.commitment}><Text style={styles.commitmentLabel}>YOUR COMMITMENT</Text><Text style={styles.commitmentValue}>{challenge.stake} <Text style={styles.commitmentUnit}>MON</Text></Text><Text style={styles.commitmentNote}>Locked by the pact · returned when you finish</Text><View style={styles.reviewRule}><FontAwesome5 name={challenge.reviewPolicy === 'unanimous' ? 'people-arrows' : challenge.reviewPolicy === 'majority' ? 'users' : 'user-check'} size={13} color={colors.acid} /><Text style={styles.reviewRuleText}>Proof rule: {challenge.reviewPolicy === 'unanimous' ? 'Unanimous peer approval' : challenge.reviewPolicy === 'majority' ? 'Majority peer vote' : 'Host decides'}</Text></View></View>
+    {isCreator && <Pressable style={styles.sharePactButton} onPress={sharePact}><Ionicons name="share-social-outline" size={17} color={colors.acid} /><View style={styles.sharePactCopy}><Text style={styles.sharePactTitle}>Share this pact</Text><Text style={styles.sharePactText}>Invite people with a direct request link.</Text></View><Ionicons name="copy-outline" size={16} color={colors.muted} /></Pressable>}
+    {isCreator && joinRequests.some(request => !request.reviewed) && <View style={styles.requestsPanel}><Text style={styles.requestsTitle}>JOIN REQUESTS</Text>{joinRequests.filter(request => !request.reviewed).map(request => <View key={request.address} style={styles.requestRow}><View><Text style={styles.memberAddress}>{request.address.slice(0, 6)}…{request.address.slice(-4)}</Text><Text style={styles.memberProof}>Wants to join this pact</Text></View><View style={styles.reviewActions}><Pressable style={styles.rejectButton} onPress={() => transact('Join request declined.', () => reviewOnchainJoin(challenge.id, request.address, false))}><Ionicons name="close" size={15} color={colors.cream} /></Pressable><Pressable style={styles.approveButton} onPress={() => transact('Join request approved.', () => reviewOnchainJoin(challenge.id, request.address, true))}><Ionicons name="checkmark" size={15} color={colors.ink} /></Pressable></View></View>)}</View>}
     <Text style={styles.sectionTitle}>The squad</Text>
     {members.length ? members.map(member => { const canReview = challenge.reviewPolicy === 'host' ? isCreator : Boolean(mine && wallet && member.address.toLowerCase() !== wallet.address.toLowerCase()); return <View key={member.address} style={styles.memberRow}><View style={styles.memberCopy}><Text style={styles.memberAddress}>{member.address.slice(0, 6)}…{member.address.slice(-4)} {member.address.toLowerCase() === challenge.creator.toLowerCase() ? '· HOST' : ''}</Text><Text style={styles.memberProof}>{member.proof ? member.resolved ? member.approved ? '✓ Proof approved' : '× Proof rejected' : 'Proof awaiting review' : 'No proof yet'}</Text></View>{canReview && member.proof && !member.resolved && challenge.status === 'verifying' && <View style={styles.reviewActions}><Pressable style={styles.rejectButton} onPress={() => transact('Rejection recorded.', () => verifyOnchainProof(challenge.id, member.address, false))}><Ionicons name="close" size={15} color={colors.cream} /></Pressable><Pressable style={styles.approveButton} onPress={() => transact('Approval recorded.', () => verifyOnchainProof(challenge.id, member.address, true))}><Ionicons name="checkmark" size={15} color={colors.ink} /></Pressable></View>}</View>; }) : <View style={styles.squadRow}>{['T', 'A', 'K', 'M'].map((name, index) => <View key={name} style={[styles.avatar, { marginLeft: index ? -10 : 0 }]}><Text style={styles.avatarText}>{name}</Text></View>)}</View>}
-    {!mine && <Pressable style={styles.primary} disabled={busy} onPress={() => transact('You are locked in.', () => joinOnchainChallenge(challenge.id, challenge.stake))}><Text style={styles.primaryText}>{busy ? 'Confirming…' : `Join with ${challenge.stake} MON`}</Text><Ionicons name="lock-closed" size={20} color={colors.ink} /></Pressable>}
+    {!mine && !wallet && <Pressable style={styles.primary} disabled={busy} onPress={onConnect}><Text style={styles.primaryText}>{busy ? 'Connecting…' : 'Connect wallet to request'}</Text><Ionicons name="wallet-outline" size={20} color={colors.ink} /></Pressable>}
+    {!mine && wallet && !myJoinRequest && <Pressable style={styles.primary} disabled={busy} onPress={() => transact('Your request was sent to the pact creator.', () => requestOnchainJoin(challenge.id))}><Text style={styles.primaryText}>{busy ? 'Sending request…' : 'Request to join'}</Text><Ionicons name="person-add-outline" size={20} color={colors.ink} /></Pressable>}
+    {!mine && wallet && myJoinRequest && !myJoinRequest.reviewed && <View style={styles.requestStatus}><Ionicons name="time-outline" size={18} color={colors.orange} /><View><Text style={styles.requestStatusTitle}>Request pending</Text><Text style={styles.requestStatusText}>The pact creator needs to approve you.</Text></View></View>}
+    {!mine && wallet && myJoinRequest?.reviewed && !myJoinRequest.approved && <View style={styles.requestStatus}><Ionicons name="close-circle-outline" size={18} color={colors.orange} /><View><Text style={styles.requestStatusTitle}>Request declined</Text><Text style={styles.requestStatusText}>The creator has not opened this pact to your wallet.</Text></View></View>}
+    {!mine && wallet && myJoinRequest?.approved && <Pressable style={styles.primary} disabled={busy} onPress={() => transact('You are locked in.', () => joinOnchainChallenge(challenge.id, challenge.stake))}><Text style={styles.primaryText}>{busy ? 'Confirming…' : `Join with ${challenge.stake} MON`}</Text><Ionicons name="lock-closed" size={20} color={colors.ink} /></Pressable>}
     {mine && challenge.status !== 'settled' && <Pressable style={styles.primary} onPress={onProof}><Text style={styles.primaryText}>{mine.proof ? 'Update today’s proof' : 'Drop today’s proof'}</Text><Ionicons name="camera" size={20} color={colors.ink} /></Pressable>}
     {challenge.status === 'verifying' && <Pressable style={styles.secondaryAction} disabled={busy} onPress={() => transact('Payouts calculated.', () => settleOnchainChallenge(challenge.id))}><Text style={styles.secondaryActionText}>Settle this pact</Text></Pressable>}
     {mine && Number(mine.claimable) > 0 && <Pressable style={styles.primary} disabled={busy} onPress={() => transact('Your payout was claimed.', () => claimOnchainPayout(challenge.id))}><Text style={styles.primaryText}>Claim {Number(mine.claimable).toFixed(3)} MON</Text><Ionicons name="wallet" size={20} color={colors.ink} /></Pressable>}
@@ -274,4 +301,5 @@ const styles = StyleSheet.create({
   previewNote:{fontFamily:font.medium,fontSize:11,color:colors.orange,textAlign:'center',marginTop:10},memberRow:{minHeight:62,borderBottomWidth:1,borderColor:colors.line,flexDirection:'row',alignItems:'center',justifyContent:'space-between'},memberAddress:{fontFamily:font.semibold,fontSize:12,color:colors.cream},memberProof:{fontFamily:font.regular,fontSize:10,color:colors.muted,marginTop:3},approveButton:{paddingHorizontal:12,paddingVertical:8,borderRadius:radius.pill,backgroundColor:colors.acid},approveText:{fontFamily:font.bold,fontSize:10,color:colors.ink},secondaryAction:{height:52,borderRadius:radius.md,borderWidth:1,borderColor:colors.acid,marginTop:12,alignItems:'center',justifyContent:'center'},secondaryActionText:{fontFamily:font.bold,fontSize:14,color:colors.acid},
   faucetLink:{marginTop:15,padding:14,borderRadius:radius.md,borderWidth:1,borderColor:colors.line,backgroundColor:colors.panel,flexDirection:'row',alignItems:'center',gap:10},faucetTitle:{fontFamily:font.semibold,fontSize:12,color:colors.cream},faucetSub:{fontFamily:font.regular,fontSize:9,color:colors.muted,marginTop:2,maxWidth:330},
   policyGrid:{gap:9},policyCard:{minHeight:66,borderRadius:radius.md,borderWidth:1,borderColor:colors.line,backgroundColor:colors.panel,padding:13,flexDirection:'row',alignItems:'center',gap:12},policyCardActive:{backgroundColor:colors.acid,borderColor:colors.acid},policyCopy:{flex:1},policyTitle:{fontFamily:font.bold,fontSize:12,color:colors.cream},policyText:{fontFamily:font.regular,fontSize:10,lineHeight:15,color:colors.muted,marginTop:2},policyTextActive:{color:colors.ink},reviewRule:{marginTop:14,paddingTop:13,borderTopWidth:1,borderColor:colors.line,flexDirection:'row',alignItems:'center',gap:8},reviewRuleText:{fontFamily:font.semibold,fontSize:11,color:colors.cream},memberCopy:{flex:1},reviewActions:{flexDirection:'row',gap:7},rejectButton:{width:34,height:34,borderRadius:10,borderWidth:1,borderColor:colors.line,backgroundColor:colors.raised,alignItems:'center',justifyContent:'center'},
+  sharePactButton:{minHeight:62,borderRadius:radius.md,borderWidth:1,borderColor:colors.line,backgroundColor:colors.panel,paddingHorizontal:15,flexDirection:'row',alignItems:'center',gap:11,marginBottom:24},sharePactCopy:{flex:1},sharePactTitle:{fontFamily:font.bold,fontSize:12,color:colors.cream},sharePactText:{fontFamily:font.regular,fontSize:10,color:colors.muted,marginTop:2},requestsPanel:{borderRadius:radius.md,borderWidth:1,borderColor:colors.line,backgroundColor:colors.panel,padding:15,marginBottom:24},requestsTitle:{fontFamily:font.bold,fontSize:9,color:colors.acid,letterSpacing:1.2,marginBottom:6},requestRow:{minHeight:58,flexDirection:'row',alignItems:'center',justifyContent:'space-between',borderTopWidth:1,borderColor:colors.line},requestStatus:{minHeight:66,borderRadius:radius.md,borderWidth:1,borderColor:colors.line,backgroundColor:colors.panel,padding:15,marginTop:20,flexDirection:'row',alignItems:'center',gap:11},requestStatusTitle:{fontFamily:font.bold,fontSize:12,color:colors.cream},requestStatusText:{fontFamily:font.regular,fontSize:10,color:colors.muted,marginTop:2},
 });
