@@ -50,8 +50,19 @@ async function signerContract() {
 
 function readonlyContract() {
   if (!CONTRACT_ADDRESS) throw new Error('NoCap contract address is not configured.');
-  const provider = connectedProvider ?? new JsonRpcProvider(MONAD_TESTNET.rpcUrls[0]);
+  const publicRpc = Platform.OS === 'web' && typeof window !== 'undefined' && window.location.hostname.endsWith('vercel.app')
+    ? `${window.location.origin}/api/rpc`
+    : MONAD_TESTNET.rpcUrls[0];
+  const provider = connectedProvider ?? new JsonRpcProvider(
+    publicRpc,
+    { chainId: Number.parseInt(MONAD_TESTNET.chainId, 16), name: 'monad-testnet' },
+    { staticNetwork: true },
+  );
   return new Contract(CONTRACT_ADDRESS, ABI, provider);
+}
+
+export function disconnectWallet() {
+  connectedProvider = null;
 }
 
 export async function connectWallet() {
