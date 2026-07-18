@@ -20,7 +20,7 @@ NoCap turns a short group goal into an on-chain pact. Every participant locks th
 
 **Project URL**
 
-https://mayorken.github.io/Nocap/
+https://nocap-nine.vercel.app
 
 **GitHub repository**
 
@@ -97,7 +97,7 @@ So I built **NoCap** for the Monad Spark hackathon.
 
 NoCap turns “I’ll start tomorrow” into a pact.
 
-Try it: https://mayorken.github.io/Nocap/  
+Try it: https://nocap-nine.vercel.app  
 Code: https://github.com/Mayorken/Nocap
 
 #Monad #BuildAnything #NoCap

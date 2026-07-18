@@ -22,7 +22,8 @@ The web app reads live challenges from the contract and supports the complete tr
 
 ## Submission links
 
-- App: https://mayorken.github.io/Nocap/
+- App: https://nocap-nine.vercel.app
+- Mirror: https://mayorken.github.io/Nocap/
 - Source: https://github.com/Mayorken/Nocap
 - Contract: [`0x992D…88B1`](https://testnet.monadvision.com/address/0x992D51421E5A53c402c09B6d07a0eF7A78fe88B1)
 - Demo video: add after recording
