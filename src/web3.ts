@@ -32,6 +32,7 @@ export const ABI = [
 
 type EthereumProvider = { request(args: { method: string; params?: unknown[] | object }): Promise<unknown> };
 declare global { interface Window { ethereum?: EthereumProvider } }
+let connectedProvider: BrowserProvider | null = null;
 
 function injected(): EthereumProvider {
   if (Platform.OS !== 'web' || typeof window === 'undefined' || !window.ethereum) {
@@ -48,7 +49,8 @@ async function signerContract() {
 
 function readonlyContract() {
   if (!CONTRACT_ADDRESS) throw new Error('NoCap contract address is not configured.');
-  return new Contract(CONTRACT_ADDRESS, ABI, new JsonRpcProvider(MONAD_TESTNET.rpcUrls[0]));
+  const provider = connectedProvider ?? new JsonRpcProvider(MONAD_TESTNET.rpcUrls[0]);
+  return new Contract(CONTRACT_ADDRESS, ABI, provider);
 }
 
 export async function connectWallet() {
@@ -61,6 +63,7 @@ export async function connectWallet() {
     await ethereum.request({ method: 'wallet_addEthereumChain', params: [MONAD_TESTNET] });
   }
   const provider = new BrowserProvider(ethereum);
+  connectedProvider = provider;
   const signer = await provider.getSigner();
   const address = await signer.getAddress();
   return { address, balance: Number(formatEther(await provider.getBalance(address))).toFixed(2) };

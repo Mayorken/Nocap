@@ -87,7 +87,7 @@ function AppContent() {
 
   const handleConnect = async () => {
     setBusy(true);
-    try { setWallet(await connectWallet()); }
+    try { const nextWallet = await connectWallet(); setWallet(nextWallet); await refresh(); }
     catch (error) { Alert.alert('Could not connect', error instanceof Error ? error.message : 'Try again.'); }
     finally { setBusy(false); }
   };
