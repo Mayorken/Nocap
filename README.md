@@ -62,3 +62,7 @@ The MVP deliberately uses creator-reviewed proofs. A production release should r
 ## Privacy
 
 Photos are not intended to be stored directly on-chain. The contract records a proof URI or content identifier. Users should avoid submitting sensitive personal information.
+
+## Testnet funding
+
+NoCap links new users to Monad's official faucet at https://faucet.monad.xyz. Testnet MON has no cash value and must not be sold. Stripe's current crypto onramp does not support MON and is geographically limited, so NoCap does not accept card payments or custody funds to buy crypto for users. A production mainnet release should integrate an approved, non-custodial provider from Monad's onramp ecosystem after compliance review.
