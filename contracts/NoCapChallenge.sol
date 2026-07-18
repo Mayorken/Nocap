@@ -2,9 +2,10 @@
 pragma solidity ^0.8.24;
 
 /// @title NoCap Challenge Escrow
-/// @notice Refundable social commitments with creator-reviewed proof and pull payments.
+/// @notice Refundable social commitments with review rules fixed when a pact is created.
 contract NoCapChallenge {
     enum Status { Open, Settled, Cancelled }
+    enum ReviewPolicy { Host, Majority, Unanimous }
 
     struct Challenge {
         address creator;
@@ -15,6 +16,7 @@ contract NoCapChallenge {
         uint16 maxParticipants;
         uint16 participantCount;
         uint16 approvedCount;
+        ReviewPolicy reviewPolicy;
         Status status;
     }
 
@@ -24,13 +26,19 @@ contract NoCapChallenge {
     mapping(uint256 => mapping(address => bool)) public hasJoined;
     mapping(uint256 => mapping(address => string)) public proofUri;
     mapping(uint256 => mapping(address => bool)) public proofApproved;
+    mapping(uint256 => mapping(address => bool)) public proofResolved;
+    mapping(uint256 => mapping(address => mapping(address => bool))) public hasReviewed;
+    mapping(uint256 => mapping(address => mapping(address => bool))) public reviewVote;
+    mapping(uint256 => mapping(address => uint16)) public approvalVotes;
+    mapping(uint256 => mapping(address => uint16)) public rejectionVotes;
     mapping(uint256 => mapping(address => uint256)) public claimable;
     mapping(uint256 => mapping(address => bool)) public hasClaimed;
 
-    event ChallengeCreated(uint256 indexed challengeId, address indexed creator, string title, uint256 stake);
+    event ChallengeCreated(uint256 indexed challengeId, address indexed creator, string title, uint256 stake, ReviewPolicy reviewPolicy);
     event ChallengeJoined(uint256 indexed challengeId, address indexed participant);
     event ProofSubmitted(uint256 indexed challengeId, address indexed participant, string proofUri);
     event ProofVerified(uint256 indexed challengeId, address indexed participant, bool approved);
+    event ProofReviewed(uint256 indexed challengeId, address indexed participant, address indexed reviewer, bool approved);
     event ChallengeSettled(uint256 indexed challengeId, uint256 winners, uint256 payoutPerWinner);
     event PayoutClaimed(uint256 indexed challengeId, address indexed participant, uint256 amount);
 
@@ -42,6 +50,9 @@ contract NoCapChallenge {
     error InvalidCapacity();
     error NotParticipant();
     error NotCreator();
+    error CannotReviewOwnProof();
+    error ReviewNotOpen();
+    error ReviewsIncomplete();
     error EmptyProof();
     error ProofMissing();
     error ChallengeNotEnded();
@@ -52,7 +63,8 @@ contract NoCapChallenge {
         string calldata title,
         uint64 startsAt,
         uint64 endsAt,
-        uint16 maxParticipants
+        uint16 maxParticipants,
+        ReviewPolicy reviewPolicy
     ) external payable returns (uint256 challengeId) {
         if (msg.value == 0 || msg.value > type(uint96).max) revert IncorrectStake();
         if (startsAt < block.timestamp || endsAt <= startsAt || endsAt > block.timestamp + 30 days) revert InvalidSchedule();
@@ -68,11 +80,12 @@ contract NoCapChallenge {
             maxParticipants: maxParticipants,
             participantCount: 1,
             approvedCount: 0,
+            reviewPolicy: reviewPolicy,
             status: Status.Open
         });
         participants[challengeId].push(msg.sender);
         hasJoined[challengeId][msg.sender] = true;
-        emit ChallengeCreated(challengeId, msg.sender, title, msg.value);
+        emit ChallengeCreated(challengeId, msg.sender, title, msg.value, reviewPolicy);
         emit ChallengeJoined(challengeId, msg.sender);
     }
 
@@ -100,16 +113,54 @@ contract NoCapChallenge {
 
     function verifyProof(uint256 challengeId, address participant, bool approved) external {
         Challenge storage challenge = challenges[challengeId];
-        if (msg.sender != challenge.creator) revert NotCreator();
         if (challenge.status != Status.Open) revert ChallengeNotOpen();
         if (!hasJoined[challengeId][participant]) revert NotParticipant();
         if (bytes(proofUri[challengeId][participant]).length == 0) revert ProofMissing();
+        if (block.timestamp < challenge.endsAt) revert ReviewNotOpen();
 
+        if (challenge.reviewPolicy == ReviewPolicy.Host) {
+            if (msg.sender != challenge.creator) revert NotCreator();
+            _resolveProof(challengeId, participant, approved);
+            emit ProofReviewed(challengeId, participant, msg.sender, approved);
+            return;
+        }
+
+        if (!hasJoined[challengeId][msg.sender]) revert NotParticipant();
+        if (msg.sender == participant) revert CannotReviewOwnProof();
+
+        bool reviewed = hasReviewed[challengeId][participant][msg.sender];
+        bool previousVote = reviewVote[challengeId][participant][msg.sender];
+        if (reviewed && previousVote != approved) {
+            if (previousVote) approvalVotes[challengeId][participant]--;
+            else rejectionVotes[challengeId][participant]--;
+        }
+        if (!reviewed || previousVote != approved) {
+            hasReviewed[challengeId][participant][msg.sender] = true;
+            reviewVote[challengeId][participant][msg.sender] = approved;
+            if (approved) approvalVotes[challengeId][participant]++;
+            else rejectionVotes[challengeId][participant]++;
+        }
+
+        uint16 reviewers = challenge.participantCount - 1;
+        uint16 approvalsNeeded = challenge.reviewPolicy == ReviewPolicy.Unanimous
+            ? reviewers
+            : reviewers / 2 + 1;
+        uint16 rejectionsNeeded = reviewers - approvalsNeeded + 1;
+        if (approvalVotes[challengeId][participant] >= approvalsNeeded) _resolveProof(challengeId, participant, true);
+        else if (rejectionVotes[challengeId][participant] >= rejectionsNeeded) _resolveProof(challengeId, participant, false);
+        emit ProofReviewed(challengeId, participant, msg.sender, approved);
+    }
+
+    function _resolveProof(uint256 challengeId, address participant, bool approved) private {
+        Challenge storage challenge = challenges[challengeId];
         bool previous = proofApproved[challengeId][participant];
-        if (previous != approved) {
+        bool wasResolved = proofResolved[challengeId][participant];
+        if (!wasResolved || previous != approved) {
             proofApproved[challengeId][participant] = approved;
-            if (approved) challenge.approvedCount++;
-            else challenge.approvedCount--;
+            proofResolved[challengeId][participant] = true;
+            if (!wasResolved && approved) challenge.approvedCount++;
+            else if (wasResolved && previous && !approved) challenge.approvedCount--;
+            else if (wasResolved && !previous && approved) challenge.approvedCount++;
         }
         emit ProofVerified(challengeId, participant, approved);
     }
@@ -119,10 +170,16 @@ contract NoCapChallenge {
         if (challenge.status != Status.Open) revert ChallengeNotOpen();
         if (block.timestamp < challenge.endsAt) revert ChallengeNotEnded();
 
+        address[] storage squad = participants[challengeId];
+        for (uint256 i; i < squad.length; ++i) {
+            if (bytes(proofUri[challengeId][squad[i]]).length != 0 && !proofResolved[challengeId][squad[i]]) {
+                revert ReviewsIncomplete();
+            }
+        }
+
         challenge.status = Status.Settled;
         uint256 winners = challenge.approvedCount;
         uint256 payout;
-        address[] storage squad = participants[challengeId];
 
         if (winners == 0) {
             payout = challenge.stake;

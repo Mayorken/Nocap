@@ -1,4 +1,5 @@
 export type ChallengeStatus = 'open' | 'active' | 'verifying' | 'settled';
+export type ReviewPolicy = 'host' | 'majority' | 'unanimous';
 
 export type Challenge = {
   id: string;
@@ -14,4 +15,5 @@ export type Challenge = {
   creator: string;
   category: string;
   endsAt?: number;
+  reviewPolicy?: ReviewPolicy;
 };

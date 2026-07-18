@@ -1,6 +1,6 @@
 import { BrowserProvider, Contract, JsonRpcProvider, formatEther, parseEther } from 'ethers';
 import { Platform } from 'react-native';
-import type { Challenge } from './types';
+import type { Challenge, ReviewPolicy } from './types';
 
 export const MONAD_TESTNET = {
   chainId: '0x279f',
@@ -14,18 +14,19 @@ export const CONTRACT_ADDRESS = process.env.EXPO_PUBLIC_CONTRACT_ADDRESS ?? '';
 export const EXPLORER_URL = MONAD_TESTNET.blockExplorerUrls[0];
 
 export const ABI = [
-  'function createChallenge(string title,uint64 startsAt,uint64 endsAt,uint16 maxParticipants) payable returns (uint256)',
+  'function createChallenge(string title,uint64 startsAt,uint64 endsAt,uint16 maxParticipants,uint8 reviewPolicy) payable returns (uint256)',
   'function joinChallenge(uint256 challengeId) payable',
   'function submitProof(uint256 challengeId,string uri)',
   'function verifyProof(uint256 challengeId,address participant,bool approved)',
   'function settleChallenge(uint256 challengeId)',
   'function claim(uint256 challengeId)',
   'function challengeCount() view returns (uint256)',
-  'function getChallenge(uint256 challengeId) view returns ((address creator,string title,uint96 stake,uint64 startsAt,uint64 endsAt,uint16 maxParticipants,uint16 participantCount,uint16 approvedCount,uint8 status))',
+  'function getChallenge(uint256 challengeId) view returns ((address creator,string title,uint96 stake,uint64 startsAt,uint64 endsAt,uint16 maxParticipants,uint16 participantCount,uint16 approvedCount,uint8 reviewPolicy,uint8 status))',
   'function getParticipants(uint256 challengeId) view returns (address[])',
   'function hasJoined(uint256 challengeId,address participant) view returns (bool)',
   'function proofUri(uint256 challengeId,address participant) view returns (string)',
   'function proofApproved(uint256 challengeId,address participant) view returns (bool)',
+  'function proofResolved(uint256 challengeId,address participant) view returns (bool)',
   'function claimable(uint256 challengeId,address participant) view returns (uint256)',
   'event ChallengeCreated(uint256 indexed challengeId,address indexed creator,string title,uint256 stake)',
 ];
@@ -86,6 +87,7 @@ export async function loadChallenges(): Promise<Challenge[]> {
       durationDays, participantCount: Number(raw.participantCount), maxParticipants: Number(raw.maxParticipants),
       currentDay: Math.min(durationDays, elapsed), status: Number(raw.status) === 0 ? (Date.now() / 1000 < endsAt ? 'active' : 'verifying') : 'settled',
       creator: raw.creator, category: 'Live', endsAt,
+      reviewPolicy: (['host', 'majority', 'unanimous'][Number(raw.reviewPolicy)] ?? 'host') as ReviewPolicy,
     } as Challenge;
   }));
 }
@@ -97,6 +99,7 @@ export async function loadChallengeMembers(challengeId: string) {
     address,
     proof: await contract.getFunction('proofUri')(challengeId, address) as string,
     approved: await contract.getFunction('proofApproved')(challengeId, address) as boolean,
+    resolved: await contract.getFunction('proofResolved')(challengeId, address) as boolean,
     claimable: formatEther(await contract.getFunction('claimable')(challengeId, address)),
   })));
 }
@@ -107,10 +110,11 @@ async function send(method: string, args: unknown[] = [], value?: string) {
   return tx.wait();
 }
 
-export async function createOnchainChallenge(input: { title: string; stake: string; durationDays: number; maxParticipants: number; demo?: boolean }) {
+export async function createOnchainChallenge(input: { title: string; stake: string; durationDays: number; maxParticipants: number; reviewPolicy: ReviewPolicy; demo?: boolean }) {
   const startsAt = Math.floor(Date.now() / 1000) + 30;
   const endsAt = startsAt + (input.demo ? 180 : input.durationDays * 86_400);
-  return send('createChallenge', [input.title, startsAt, endsAt, input.maxParticipants], input.stake);
+  const policy = { host: 0, majority: 1, unanimous: 2 }[input.reviewPolicy];
+  return send('createChallenge', [input.title, startsAt, endsAt, input.maxParticipants, policy], input.stake);
 }
 export const joinOnchainChallenge = (id: string, stake: string) => send('joinChallenge', [id], stake);
 export const submitOnchainProof = (id: string, proof: string) => send('submitProof', [id, proof]);
