@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "NoCap",
+    "slug": "nocap",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "scheme": "nocap",
+    "web": { "bundler": "metro", "output": "single" },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "NoCap uses your photo as proof for a challenge check-in.",
+          "cameraPermission": "NoCap uses the camera to capture challenge proof.",
+          "microphonePermission": false
+        }
+      ]
+    ]
+  }
+}
