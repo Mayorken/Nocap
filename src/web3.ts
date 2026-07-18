@@ -6,7 +6,7 @@ export const MONAD_TESTNET = {
   chainId: '0x279f',
   chainName: 'Monad Testnet',
   nativeCurrency: { name: 'MON', symbol: 'MON', decimals: 18 },
-  rpcUrls: [process.env.EXPO_PUBLIC_MONAD_RPC_URL ?? 'https://testnet-rpc.monad.xyz'],
+  rpcUrls: [process.env.EXPO_PUBLIC_MONAD_RPC_URL ?? 'https://rpc-testnet.monadinfra.com'],
   blockExplorerUrls: [process.env.EXPO_PUBLIC_MONAD_EXPLORER_URL ?? 'https://testnet.monadvision.com'],
 };
 
